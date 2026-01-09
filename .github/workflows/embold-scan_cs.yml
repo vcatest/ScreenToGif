@@ -9,56 +9,61 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
-    container: ubuntu:20.04
+    runs-on: windows-latest  # CHANGED: Use Windows to support WPF/.NET 9
+    # Removed 'container' as it is not needed for Windows runners
+
     steps:
     - uses: actions/checkout@v4
     
-    - name: Install dependencies (curl, wget, libssl1.1)
-      run: |
-        apt-get update
-        apt-get install curl wget libssl1.1 -y 
-    
-    - name: Install Java for Embold Scanner
-      run: |
-        apt-get install openjdk-11-jre -y
+    # NEW: Setup Java natively for Windows (Required for Embold)
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'microsoft'
+        java-version: '11'
         
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
       with:
-        # UPDATED: Using 8.0.x as the modern default. 
-        # If your project uses .NET 6 or Framework 4.8, change this version.
-        dotnet-version: 8.0.x 
+        dotnet-version: 9.0.x
         
-    # NEW STEP: Auto-detect and build the project
     - name: Build Project
       run: |
-        echo "Searching for solution or project files..."
-        # Find the first .sln file, or fallback to .csproj
-        TARGET_FILE=$(find . -name "*.sln" | head -n 1)
-        if [ -z "$TARGET_FILE" ]; then
-          TARGET_FILE=$(find . -name "*.csproj" | head -n 1)
-        fi
-
-        if [ -z "$TARGET_FILE" ]; then
-          echo "Error: No .sln or .csproj file found!"
-          exit 1
-        else
-          echo "Found build target: $TARGET_FILE"
-          echo "Restoring dependencies..."
-          dotnet restore "$TARGET_FILE"
-          
-          echo "Building..."
-          # We use '|| true' to ensure the Embold step runs even if the build fails 
-          # (common if building Windows apps on Linux)
-          dotnet build "$TARGET_FILE" --configuration Release || echo "Build failed, proceeding to analysis..."
-        fi
+        # PowerShell script to find .sln and build
+        $solution = Get-ChildItem -Recurse -Filter "*.sln" | Select-Object -First 1
+        
+        if ($null -eq $solution) {
+            Write-Error "No Solution (.sln) file found!"
+            exit 1
+        }
+        
+        Write-Host "Found Solution: $($solution.FullName)"
+        
+        # Restore and Build
+        dotnet restore $solution.FullName
+        dotnet build $solution.FullName --configuration Release
 
     - name: Embold Analyse
+      shell: pwsh
       run: |
-        curl ${{ vars.EMBOLD_SCANNER_URL }} -o browserstack-codequality-scanner-archive.tar.gz
-        tar xvf browserstack-codequality-scanner-archive.tar.gz
-        echo "Download and extract BrowserStack CQ Scanner done"
-        curl --silent --location --request GET "${{ vars.EMBOLD_URL_CS }}/api/v1/repositories/8f045665361dcb86eba38bf8e7bf992c/scans/config/download" --header "Authorization:Bearer ${{ secrets.EMBOLD_TOKEN_CS }}" -o repository-configuration.json
-        echo "Download repository configuration file done"
-        ./browserstack-codequality-scanner/bin/embold-scanner analyse -u ${{ vars.EMBOLD_URL_CS }} -t "${{ secrets.EMBOLD_TOKEN_CS }}" -r 8f045665361dcb86eba38bf8e7bf992c -b . -d ./embold-data -c ./repository-configuration.json -v
+        # 1. Download Scanner
+        # CRITICAL: Ensure ${{ vars.EMBOLD_SCANNER_URL }} points to the WINDOWS (.zip) version.
+        Write-Host "Downloading Scanner from ${{ vars.EMBOLD_SCANNER_URL }}..."
+        curl "${{ vars.EMBOLD_SCANNER_URL }}" -o scanner.zip
+        
+        # 2. Extract Scanner
+        Write-Host "Extracting Scanner..."
+        Expand-Archive -Path scanner.zip -DestinationPath . -Force
+        
+        # 3. Download Configuration
+        Write-Host "Downloading Config..."
+        $headers = @{ Authorization = "Bearer ${{ secrets.EMBOLD_TOKEN_CS }}" }
+        $configUrl = "${{ vars.EMBOLD_URL_CS }}/api/v1/repositories/8f045665361dcb86eba38bf8e7bf992c/scans/config/download"
+        Invoke-WebRequest -Uri $configUrl -Headers $headers -OutFile repository-configuration.json
+        
+        # 4. Run Analysis
+        # Note: Windows uses backslashes and usually a .bat file
+        Write-Host "Starting Analysis..."
+        
+        # Adjust path below if the zip extracts to a specific folder name
+        .\browserstack-codequality-scanner\bin\embold-scanner.bat analyse -u "${{ vars.EMBOLD_URL_CS }}" -t "${{ secrets.EMBOLD_TOKEN_CS }}" -r 8f045665361dcb86eba38bf8e7bf992c -b . -d .\embold-data -c .\repository-configuration.json -v
