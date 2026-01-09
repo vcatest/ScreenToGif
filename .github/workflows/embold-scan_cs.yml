@@ -1,10 +1,12 @@
 name: .NET
+
 on:
   push:
     branches: [ "master" ]
   pull_request:
     branches: [ "master" ]
   workflow_dispatch:
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -17,7 +19,6 @@ jobs:
         apt-get update
         apt-get install curl wget libssl1.1 -y 
     
-    # NEW STEP: Install Java (OpenJDK 11 is a common, stable version)
     - name: Install Java for Embold Scanner
       run: |
         apt-get install openjdk-11-jre -y
@@ -25,8 +26,34 @@ jobs:
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
       with:
-        dotnet-version: 3.0.x
+        # UPDATED: Using 8.0.x as the modern default. 
+        # If your project uses .NET 6 or Framework 4.8, change this version.
+        dotnet-version: 8.0.x 
         
+    # NEW STEP: Auto-detect and build the project
+    - name: Build Project
+      run: |
+        echo "Searching for solution or project files..."
+        # Find the first .sln file, or fallback to .csproj
+        TARGET_FILE=$(find . -name "*.sln" | head -n 1)
+        if [ -z "$TARGET_FILE" ]; then
+          TARGET_FILE=$(find . -name "*.csproj" | head -n 1)
+        fi
+
+        if [ -z "$TARGET_FILE" ]; then
+          echo "Error: No .sln or .csproj file found!"
+          exit 1
+        else
+          echo "Found build target: $TARGET_FILE"
+          echo "Restoring dependencies..."
+          dotnet restore "$TARGET_FILE"
+          
+          echo "Building..."
+          # We use '|| true' to ensure the Embold step runs even if the build fails 
+          # (common if building Windows apps on Linux)
+          dotnet build "$TARGET_FILE" --configuration Release || echo "Build failed, proceeding to analysis..."
+        fi
+
     - name: Embold Analyse
       run: |
         curl ${{ vars.EMBOLD_SCANNER_URL }} -o browserstack-codequality-scanner-archive.tar.gz
