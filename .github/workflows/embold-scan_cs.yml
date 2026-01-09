@@ -46,24 +46,9 @@ jobs:
     - name: Embold Analyse
       shell: pwsh
       run: |
-        # 1. Download Scanner
-        # CRITICAL: Ensure ${{ vars.EMBOLD_SCANNER_URL }} points to the WINDOWS (.zip) version.
-        Write-Host "Downloading Scanner from ${{ vars.EMBOLD_SCANNER_URL }}..."
-        curl "${{ vars.EMBOLD_SCANNER_URL }}" -o scanner.zip
-        
-        # 2. Extract Scanner
-        Write-Host "Extracting Scanner..."
-        Expand-Archive -Path scanner.zip -DestinationPath . -Force
-        
-        # 3. Download Configuration
-        Write-Host "Downloading Config..."
-        $headers = @{ Authorization = "Bearer ${{ secrets.EMBOLD_TOKEN_CS }}" }
-        $configUrl = "${{ vars.EMBOLD_URL_CS }}/api/v1/repositories/8f045665361dcb86eba38bf8e7bf992c/scans/config/download"
-        Invoke-WebRequest -Uri $configUrl -Headers $headers -OutFile repository-configuration.json
-        
-        # 4. Run Analysis
-        # Note: Windows uses backslashes and usually a .bat file
-        Write-Host "Starting Analysis..."
-        
-        # Adjust path below if the zip extracts to a specific folder name
-        .\browserstack-codequality-scanner\bin\embold-scanner.bat analyse -u "${{ vars.EMBOLD_URL_CS }}" -t "${{ secrets.EMBOLD_TOKEN_CS }}" -r 8f045665361dcb86eba38bf8e7bf992c -b . -d .\embold-data -c .\repository-configuration.json -v
+        curl ${{ vars.EMBOLD_SCANNER_URL }} -o browserstack-codequality-scanner-archive.tar.gz
+        tar xvf browserstack-codequality-scanner-archive.tar.gz
+        echo "Download and extract BrowserStack CQ Scanner done"
+        curl --silent --location --request GET "${{ vars.EMBOLD_URL_CS }}/api/v1/repositories/8f045665361dcb86eba38bf8e7bf992c/scans/config/download" --header "Authorization:Bearer ${{ secrets.EMBOLD_TOKEN_CS }}" -o repository-configuration.json
+        echo "Download repository configuration file done"
+        ./browserstack-codequality-scanner/bin/embold-scanner analyse -u ${{ vars.EMBOLD_URL_CS }} -t "${{ secrets.EMBOLD_TOKEN_CS }}" -r 8f045665361dcb86eba38bf8e7bf992c -b . -d ./embold-data -c ./repository-configuration.json -v
