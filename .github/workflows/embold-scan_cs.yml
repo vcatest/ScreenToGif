@@ -1,50 +1,33 @@
 name: .NET
-
 on:
   push:
     branches: [ "master" ]
   pull_request:
     branches: [ "master" ]
   workflow_dispatch:
-
 jobs:
   build:
-    runs-on: windows-latest  # CHANGED: Use Windows to support WPF/.NET 9
-    # Removed 'container' as it is not needed for Windows runners
-
+    runs-on: ubuntu-latest
+    container: ubuntu:20.04
     steps:
     - uses: actions/checkout@v4
     
-    # NEW: Setup Java natively for Windows (Required for Embold)
-    - name: Setup Java
-      uses: actions/setup-java@v4
-      with:
-        distribution: 'microsoft'
-        java-version: '11'
+    - name: Install dependencies (curl, wget, libssl1.1)
+      run: |
+        apt-get update
+        apt-get install curl wget libssl1.1 -y 
+    
+    # NEW STEP: Install Java (OpenJDK 11 is a common, stable version)
+    - name: Install Java for Embold Scanner
+      run: |
+        apt-get install openjdk-11-jre -y
         
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
       with:
-        dotnet-version: 9.0.x
+        dotnet-version: 3.0.x
         
-    - name: Build Project
-      run: |
-        # PowerShell script to find .sln and build
-        $solution = Get-ChildItem -Recurse -Filter "*.sln" | Select-Object -First 1
-        
-        if ($null -eq $solution) {
-            Write-Error "No Solution (.sln) file found!"
-            exit 1
-        }
-        
-        Write-Host "Found Solution: $($solution.FullName)"
-        
-        # Restore and Build
-        dotnet restore $solution.FullName
-        dotnet build $solution.FullName --configuration Release
-
     - name: Embold Analyse
-      shell: pwsh
       run: |
         curl ${{ vars.EMBOLD_SCANNER_URL }} -o browserstack-codequality-scanner-archive.tar.gz
         tar xvf browserstack-codequality-scanner-archive.tar.gz
