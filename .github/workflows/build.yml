@@ -44,8 +44,8 @@ jobs:
       run: dotnet build -p:EnableWindowsTargeting=true
       
     ## NEW: Build the project (Required for Sonar analysis)
-    - name: Build Project
-      run: dotnet build # Add your .sln or .csproj path here if it's not in the root directory
+   ## - name: Build Project
+    ##  run: dotnet build # Add your .sln or .csproj path here if it's not in the root directory
       
     ## NEW: End SonarScanner (Upload analysis to Sonar server)
     - name: SonarScanner End
